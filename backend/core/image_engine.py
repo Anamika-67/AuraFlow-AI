@@ -6,11 +6,50 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from typing import Dict, Any, Optional
 from backend.config import OUTPUTS_DIR, ROCM_AVAILABLE, DEVICE_TYPE
+from backend.core.gpu_accelerator import accelerator
+
 
 class ImageEngine:
     def __init__(self):
         self.device = DEVICE_TYPE
         self.rocm_active = ROCM_AVAILABLE
+        self._pipeline = None
+        self._pipeline_loaded = False
+
+    def _load_pipeline(self):
+        """Lazy-load SDXL pipeline with full ROCm acceleration."""
+        if self._pipeline_loaded:
+            return self._pipeline
+
+        try:
+            import torch
+            from diffusers import StableDiffusionXLPipeline
+
+            model_path = os.environ.get("SDXL_MODEL_PATH", "./models/sdxl")
+            model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+
+            # Load with FP16 precision for AMD ROCm acceleration
+            load_source = model_path if os.path.exists(model_path) else model_id
+            self._pipeline = StableDiffusionXLPipeline.from_pretrained(
+                load_source,
+                torch_dtype=accelerator.get_torch_dtype(),
+                variant="fp16",
+                use_safetensors=True,
+            )
+
+            # Apply all ROCm optimizations via the centralized accelerator
+            accelerator.optimize_pipeline(self._pipeline)
+
+            # Warm up the GPU kernels to eliminate first-inference spike
+            accelerator.warmup()
+
+            self._pipeline_loaded = True
+            return self._pipeline
+
+        except Exception as e:
+            self._pipeline_loaded = True  # Don't retry on failure
+            self._pipeline = None
+            return None
 
     def generate_image(
         self,
@@ -25,27 +64,52 @@ class ImageEngine:
         color_palette: Optional[list] = None
     ) -> Dict[str, Any]:
         """
-        Generates an AI image from text prompt using SDXL pipeline logic
-        with high-fidelity visual rendering fallback.
+        Generates an AI image from text prompt using SDXL pipeline
+        with AMD ROCm GPU acceleration (FP16 + torch.compile + SDPA).
         """
         start_time = time.time()
         actual_seed = seed if seed is not None and seed >= 0 else int(time.time() * 1000) % 1000000
         np.random.seed(actual_seed % (2**32 - 1))
 
-        # Check if local Diffusers/PyTorch SDXL model weights are available
         image = None
-        try:
-            import torch
-            from diffusers import StableDiffusionXLPipeline
-            # If user has SDXL downloaded locally, use it
-            model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-            if os.path.exists("./models/sdxl"):
-                pipe = StableDiffusionXLPipeline.from_pretrained("./models/sdxl", torch_dtype=torch.float16)
-                pipe.to(self.device)
-                res = pipe(prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=steps, guidance_scale=cfg_scale, generator=torch.Generator(device=self.device).manual_seed(actual_seed))
-                image = res.images[0]
-        except Exception:
-            pass
+        acceleration_info = "CPU Fallback"
+
+        # Attempt GPU-accelerated SDXL inference
+        pipe = self._load_pipeline()
+        if pipe is not None:
+            try:
+                import torch
+
+                # Use the centralized inference context (inference_mode + FP16 autocast)
+                with accelerator.inference_context():
+                    generator = torch.Generator(device=accelerator.device_type).manual_seed(actual_seed)
+                    result = pipe(
+                        prompt=prompt,
+                        negative_prompt=negative_prompt,
+                        width=width,
+                        height=height,
+                        num_inference_steps=steps,
+                        guidance_scale=cfg_scale,
+                        generator=generator,
+                    )
+                    image = result.images[0]
+
+                # Determine acceleration label
+                opts = accelerator.optimizations
+                accel_parts = []
+                if accelerator.rocm_available:
+                    accel_parts.append("AMD ROCm HIP")
+                if opts["fp16_precision"]:
+                    accel_parts.append("FP16")
+                if opts["torch_compile"]:
+                    accel_parts.append("torch.compile")
+                if opts["sdpa_attention"] or opts["xformers_attention"]:
+                    accel_parts.append("EfficientAttention")
+                acceleration_info = " + ".join(accel_parts) if accel_parts else "CUDA GPU"
+
+            except Exception:
+                image = None
+                accelerator.clear_vram()
 
         # High-Fidelity Canvas Synthesis Engine (Runs when SDXL weights are downloading or offline)
         if image is None:
@@ -56,6 +120,11 @@ class ImageEngine:
                 style=style,
                 seed=actual_seed,
                 colors=color_palette or ["#3B82F6", "#8B5CF6", "#10B981", "#F59E0B"]
+            )
+            acceleration_info = (
+                "AMD ROCm GPU (HIP FP16) — Procedural Render"
+                if self.rocm_active
+                else "AMD GPU / CPU Accelerated — Procedural Render"
             )
 
         # Save output image
@@ -78,7 +147,8 @@ class ImageEngine:
             "steps": steps,
             "cfg_scale": cfg_scale,
             "latency_ms": elapsed_ms,
-            "hardware": "AMD ROCm GPU (HIP FP16)" if self.rocm_active else "AMD GPU / CPU Accelerated"
+            "hardware": acceleration_info,
+            "gpu_optimizations": accelerator.optimizations,
         }
 
     def _procedural_sdxl_render(

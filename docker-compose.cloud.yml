@@ -1,0 +1,76 @@
+# ===========================================================================
+# AuraFlow-AI — Cloud Deployment Configuration
+# Designed for 1-click deployments on RunPod, Vast.ai, AWS, etc.
+# ===========================================================================
+#
+# Unlike local development, this configuration:
+#   1. Automatically downloads all 10GB of model weights on startup.
+#   2. Does not map local volumes (stores everything in the container).
+#   3. Exposes only the HTTP ports.
+#
+# Usage:
+#   docker compose -f docker-compose.cloud.yml up -d
+#
+# ===========================================================================
+
+services:
+  # ── AuraFlow Backend (FastAPI + Auto-Downloader) ───────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auraflow-backend-cloud
+    restart: always
+
+    ports:
+      - "8000:8000"
+
+    # AMD GPU passthrough
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+
+    group_add:
+      - video
+      - render
+
+    environment:
+      # GPU Configuration
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
+      - PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH:-gfx1100}
+      - HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+      
+      # Optimizations (Conservative defaults for cloud stability)
+      - AURA_DEVICE=auto
+      - AURA_FP16=true
+      - AURA_TORCH_COMPILE=false
+      - AURA_ATTENTION_BACKEND=sdpa
+
+      # HF Cache
+      - HF_HOME=/app/models/hf_cache
+
+    # 8GB Shared memory for PyTorch DataLoader
+    shm_size: "8gb"
+
+    # Override the default command to download models FIRST, then start server
+    command: >
+      bash -c "
+      echo 'Initializing Cloud Environment...' &&
+      python backend/scripts/download_models.py &&
+      echo 'Starting FastAPI Server...' &&
+      python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 120
+      "
+
+  # ── AuraFlow Frontend (React) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: auraflow-frontend-cloud
+    restart: always
+
+    ports:
+      - "5173:5173"
+
+    environment:
+      - VITE_API_URL=http://backend:8000

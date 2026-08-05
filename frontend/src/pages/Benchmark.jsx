@@ -4,7 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
 } from "recharts";
-import { Cpu, Thermometer, Zap, MemoryStick, Activity, Monitor } from "lucide-react";
+import { Cpu, Thermometer, Zap, MemoryStick, Activity, Monitor, TrendingUp, Gauge } from "lucide-react";
 import { getBenchmarkTelemetry, getBenchmarkLatency, createTelemetrySocket } from "../api/auraflow";
 import usePipelineStore from "../store/usePipelineStore";
 import GPUGauge from "../components/GPUGauge";
@@ -64,6 +64,23 @@ function MetricCard({ label, value, unit, color, icon: Icon }) {
           {value}<span style={{ fontSize: 12, fontWeight: 500, marginLeft: 3 }}>{unit}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Speedup badge component
+function SpeedupBadge({ speedup, label }) {
+  const color = speedup >= 3 ? "#10b981" : speedup >= 2 ? "#00f0ff" : "#f59e0b";
+  return (
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "6px 14px", borderRadius: 999,
+      background: `${color}12`, border: `1px solid ${color}30`,
+      fontSize: 11, fontWeight: 700, fontFamily: "JetBrains Mono, monospace",
+      color,
+    }}>
+      <TrendingUp size={13} />
+      {speedup.toFixed(1)}× {label}
     </div>
   );
 }
@@ -128,6 +145,15 @@ export default function Benchmark() {
       }))
     : [];
 
+  // Build acceleration comparison data
+  const accelComparison = latency?.acceleration_comparison || {};
+  const accelBarData = Object.entries(accelComparison).map(([stage, data]) => ({
+    name: stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace("Tts", "TTS"),
+    cpu: data.cpu_baseline_ms,
+    rocm: data.rocm_accelerated_ms,
+    speedup: data.speedup_x,
+  }));
+
   return (
     <div style={{ minHeight: "100vh", paddingTop: 80, padding: "80px 24px 60px", maxWidth: 1200, margin: "0 auto" }}>
       {/* Header */}
@@ -184,7 +210,7 @@ export default function Benchmark() {
             <div>
               <div style={{ fontWeight: 800, fontSize: 16, color: "#e2e8f0" }}>{t.gpu_name}</div>
               <div style={{ fontSize: 11, color: "#4a5568", fontFamily: "JetBrains Mono, monospace" }}>
-                ROCm {t.rocm_version} | {(t.vram_total_mb / 1024).toFixed(0)} GB VRAM
+                ROCm {t.rocm_version} | {(t.vram_total_mb / 1024).toFixed(0)} GB VRAM{t.gpu_arch && t.gpu_arch !== "N/A" ? ` | ${t.gpu_arch}` : ""}
               </div>
             </div>
           </div>
@@ -228,8 +254,8 @@ export default function Benchmark() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 24 }}>
           <MetricCard label="VRAM Used" value={(t.vram_used_mb / 1024).toFixed(1)} unit="GB" color="#00f0ff" icon={MemoryStick} />
           <MetricCard label="VRAM Total" value={(t.vram_total_mb / 1024).toFixed(1)} unit="GB" color="#a855f7" icon={MemoryStick} />
+          <MetricCard label="Power Draw" value={t.power_draw_w?.toFixed(0) || "—"} unit="W" color="#ff007f" icon={Zap} />
           <MetricCard label="RAM Used" value={t.system_ram_used_gb?.toFixed(1)} unit="GB" color="#6366f1" icon={Monitor} />
-          <MetricCard label="RAM Total" value={t.system_ram_total_gb?.toFixed(0)} unit="GB" color="#374151" icon={Monitor} />
         </div>
       )}
 
@@ -259,6 +285,36 @@ export default function Benchmark() {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {/* ── Acceleration Comparison Chart (NEW) ────────────────────────────── */}
+      {accelBarData.length > 0 && (
+        <div className="glass" style={{ borderRadius: 16, padding: 24, marginBottom: 24, border: "1px solid #1e2d42" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#94a3b8", letterSpacing: 1, textTransform: "uppercase", margin: 0 }}>
+              CPU vs AMD ROCm Acceleration
+            </h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {accelBarData.map((d) => (
+                <SpeedupBadge key={d.name} speedup={d.speedup} label={d.name.split(" ")[0]} />
+              ))}
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={accelBarData} margin={{ left: 10, right: 20, top: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e2d42" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} />
+              <YAxis tick={{ fontSize: 9, fill: "#374151" }} unit="ms" />
+              <Tooltip content={<AuraTooltip />} />
+              <Legend
+                wrapperStyle={{ fontSize: 11, color: "#64748b" }}
+                formatter={(value) => <span style={{ color: "#94a3b8", fontSize: 11 }}>{value}</span>}
+              />
+              <Bar dataKey="cpu" name="CPU Baseline" fill="#374151" radius={[4, 4, 0, 0]} barSize={24} />
+              <Bar dataKey="rocm" name="ROCm FP16 + Compile" fill="#00f0ff" radius={[4, 4, 0, 0]} barSize={24} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* ── Pipeline Latency Benchmarks ───────────────────────────────────── */}
       {latency && (
@@ -301,6 +357,33 @@ export default function Benchmark() {
                 </div>
               ))}
             </div>
+
+            {/* Active optimizations summary */}
+            {latency.active_optimizations && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e2d42" }}>
+                <div style={{ fontSize: 11, color: "#4a5568", fontWeight: 600, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Active Optimizations
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {Object.entries(latency.active_optimizations).map(([k, v]) => (
+                    <span
+                      key={k}
+                      style={{
+                        fontSize: 9,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontFamily: "JetBrains Mono, monospace",
+                        background: v ? "#10b98112" : "#37415112",
+                        border: `1px solid ${v ? "#10b98130" : "#37415130"}`,
+                        color: v ? "#10b981" : "#374151",
+                      }}
+                    >
+                      {v ? "✓" : "✗"} {k.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

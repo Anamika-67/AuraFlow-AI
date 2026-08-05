@@ -4,8 +4,9 @@ import uuid
 import math
 import struct
 import wave
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from backend.config import OUTPUTS_DIR
+from backend.core.gpu_accelerator import accelerator
 
 VOICE_PRESETS = {
     "nova": {"name": "Nova (Warm & Engaging)", "pitch_factor": 1.1, "base_freq": 220},
@@ -16,6 +17,28 @@ VOICE_PRESETS = {
 }
 
 class TTSEngine:
+    def __init__(self):
+        self._piper_available = None
+
+    def _check_piper(self) -> bool:
+        """Check if Piper TTS binary is installed."""
+        if self._piper_available is not None:
+            return self._piper_available
+
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["piper", "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            self._piper_available = res.returncode == 0
+        except Exception:
+            self._piper_available = False
+
+        return self._piper_available
+
     def generate_narration(
         self,
         text: str,
@@ -25,6 +48,7 @@ class TTSEngine:
     ) -> Dict[str, Any]:
         """
         Synthesizes AI narration voiceover audio from text.
+        Uses Piper TTS when available, with procedural fallback.
         """
         start_time = time.time()
         
@@ -34,23 +58,43 @@ class TTSEngine:
         wav_filename = f"{audio_id}.wav"
         wav_filepath = OUTPUTS_DIR / wav_filename
 
-        # Check if local Piper TTS binary is installed
-        piper_used = False
-        try:
-            # If piper CLI or library is present
-            import subprocess
-            res = subprocess.run(["piper", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if res.returncode == 0:
-                # Execute piper synthesis
-                piper_used = True
-        except Exception:
-            pass
-
+        piper_used = self._check_piper()
         duration_sec = 3.0
-        waveform_data = []
+        waveform_data: List[float] = []
+        acceleration_info = "CPU — Procedural Synthesis"
+
+        if piper_used:
+            try:
+                import subprocess
+                # Execute piper synthesis
+                input_text = text.encode("utf-8")
+                result = subprocess.run(
+                    [
+                        "piper",
+                        "--model", os.environ.get("PIPER_MODEL", "en_US-lessac-medium"),
+                        "--output_file", str(wav_filepath),
+                        "--length_scale", str(1.0 / max(0.5, speed)),
+                    ],
+                    input=input_text,
+                    capture_output=True,
+                    timeout=30,
+                )
+                if result.returncode == 0:
+                    # Read duration from output WAV
+                    with wave.open(str(wav_filepath), "r") as wf:
+                        frames = wf.getnframes()
+                        rate = wf.getframerate()
+                        duration_sec = round(frames / rate, 2)
+                    # Generate waveform visualization
+                    waveform_data = self._extract_waveform(str(wav_filepath))
+                    acceleration_info = "Piper TTS (Neural)"
+                else:
+                    piper_used = False
+            except Exception:
+                piper_used = False
 
         if not piper_used:
-            # High-Fidelity Audio Synthesizer Engine (Generates clean harmonic audio wave)
+            # High-Fidelity Audio Synthesizer Engine
             duration_sec, waveform_data = self._synthesize_procedural_speech(
                 text=text,
                 filepath=str(wav_filepath),
@@ -73,8 +117,28 @@ class TTSEngine:
             "speed": speed,
             "pitch": pitch,
             "waveform": waveform_data,
-            "latency_ms": elapsed_ms
+            "latency_ms": elapsed_ms,
+            "hardware": acceleration_info,
         }
+
+    def _extract_waveform(self, filepath: str, points: int = 30) -> List[float]:
+        """Extract waveform visualization data from a WAV file."""
+        try:
+            with wave.open(filepath, "r") as wf:
+                n_frames = wf.getnframes()
+                frames = wf.readframes(n_frames)
+                samples = struct.unpack(f"<{n_frames}h", frames)
+
+                chunk_size = max(1, n_frames // points)
+                waveform = []
+                for i in range(0, min(n_frames, points * chunk_size), chunk_size):
+                    chunk = samples[i:i + chunk_size]
+                    if chunk:
+                        peak = max(abs(s) for s in chunk)
+                        waveform.append(round(peak / 32768.0, 2))
+                return waveform[:points]
+        except Exception:
+            return [0.5] * points
 
     def _synthesize_procedural_speech(
         self,
@@ -83,7 +147,7 @@ class TTSEngine:
         voice_meta: dict,
         speed: float,
         pitch: float
-    ) -> (float, List[float]):
+    ) -> Tuple[float, List[float]]:
         """Synthesizes smooth modulated vocal audio frequencies saved as standard WAV file."""
         sample_rate = 22050
         words = [w for w in text.split() if w]
@@ -94,7 +158,7 @@ class TTSEngine:
         total_samples = int(sample_rate * duration_sec)
 
         base_freq = voice_meta["base_freq"] * pitch
-        waveform_vis = []
+        waveform_vis: List[float] = []
 
         with wave.open(filepath, 'w') as wav_file:
             wav_file.setnchannels(1)  # Mono
@@ -103,7 +167,7 @@ class TTSEngine:
 
             # Generate speech-like modulated carrier waves
             samples = []
-            chunk_size = total_samples // 30
+            chunk_size = max(1, total_samples // 30)
             
             for i in range(total_samples):
                 t = i / sample_rate
