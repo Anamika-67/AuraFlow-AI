@@ -1,5 +1,5 @@
 # AuraFlow-AI
-An end-to-end multimodal AI creative pipeline that generates, edits, animates, and narrates content while leveraging AMD Radeon GPU acceleration through ROCm, ONNX Runtime, and optimized inference.
+A context-aware multimodal AI platform that transforms ideas into images, videos, and voice through a unified creative pipeline, accelerated by AMD Radeon GPUs using ROCm, ONNX Runtime, and optimized AI inference.
 
 
 # 🏗️ System Architecture
@@ -51,6 +51,10 @@ An end-to-end multimodal AI creative pipeline that generates, edits, animates, a
                          └──────────────────┘
 ```
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> 4ecb7dc3de23f59e5facee396612b68a268ca6e4
 # 🔄 System Flow
 
 ```text
@@ -151,6 +155,10 @@ Preview
 Export
 ```
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> 4ecb7dc3de23f59e5facee396612b68a268ca6e4
 ## 🛠️ Tech Stack
 
 | Category | Technology |
