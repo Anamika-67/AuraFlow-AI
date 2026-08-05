@@ -1,0 +1,34 @@
+{
+  "id": "proj_e73dccac",
+  "name": "bc",
+  "description": "for pro",
+  "created_at": 1785907739.9193053,
+  "updated_at": 1785908031.2494066,
+  "context": {
+    "prompt": "crete a cool dog photo",
+    "subject": "Crete a cool dog photo",
+    "style": "Cinematic Realism",
+    "mood": "Atmospheric & Dramatic",
+    "lighting": "Balanced Cinematic Studio Light",
+    "color_palette": [
+      "#3B82F6",
+      "#8B5CF6",
+      "#10B981",
+      "#F59E0B"
+    ],
+    "suggested_narration": "Witness the creation of crete a cool dog photo, brought to life with cinematic realism aesthetics and atmospheric & dramatic energy.",
+    "tags": [
+      "Cinematic Realism",
+      "Atmospheric & Dramatic",
+      "Aura-AI",
+      "SDXL-ROCm"
+    ]
+  },
+  "assets": {
+    "images": [],
+    "edited_images": [],
+    "videos": [],
+    "audios": [],
+    "renders": []
+  }
+}
