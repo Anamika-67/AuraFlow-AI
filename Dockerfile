@@ -96,7 +96,7 @@ ENV PYTHONPATH=/app \
     # AuraFlow configuration
     AURA_DEVICE=auto \
     AURA_FP16=true \
-    AURA_TORCH_COMPILE=true \
+    AURA_TORCH_COMPILE=false \
     AURA_ATTENTION_BACKEND=sdpa
 
 # Expose FastAPI port
