@@ -1,0 +1,38 @@
+# =============================================================================
+# Aura Flow AI — Backend Dependencies
+# Track 1: Multimodal Content Creation Tools | AMD ROCm GPU
+# =============================================================================
+
+# Core server
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0
+python-multipart>=0.0.6
+
+# Image & media processing (always required)
+pillow>=9.5.0
+numpy>=1.24.0
+
+# System monitoring for GPU/CPU telemetry
+psutil>=5.9.5
+
+# HTTP utilities
+requests>=2.31.0
+
+# =============================================================================
+# AI Inference — Install PyTorch SEPARATELY using the correct wheel:
+#
+#   AMD Radeon GPU (ROCm 6.1) — PRIMARY TARGET:
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1
+#
+#   NVIDIA GPU (CUDA 12.1):
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+#   CPU only (no GPU):
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# =============================================================================
+
+# Hugging Face AI pipeline (installed after torch)
+diffusers>=0.25.0
+transformers>=4.37.0
+accelerate>=0.26.0
