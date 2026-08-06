@@ -1,0 +1,31 @@
+# =============================================================================
+# Render Blueprint Configuration (render.yaml)
+# 1-Click Free Deployment for AuraFlow-AI
+# =============================================================================
+
+services:
+  # ── Backend FastAPI Web Service ──────────────────────────────────────────────
+  - type: web
+    name: auraflow-backend
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: AURA_DEVICE
+        value: cpu
+
+  # ── Frontend React Static Site ───────────────────────────────────────────────
+  - type: static
+    name: auraflow-frontend
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
