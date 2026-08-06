@@ -2,7 +2,15 @@
 
 A context-aware multimodal AI platform that transforms ideas into images, videos, and voice through a unified creative pipeline, accelerated by AMD Radeon GPUs using ROCm, ONNX Runtime, and optimized AI inference.
 
+<<<<<<< HEAD
 ---
+=======
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+
+cd d:\AMD\frontend
+npm run dev
+>>>>>>> 7b70344 (feat: add AWS deployment configs, Dockerfiles, docker-compose, and automated deploy-aws.sh)
 
 ## 🏗️ System Architecture
 
@@ -53,6 +61,7 @@ A context-aware multimodal AI platform that transforms ideas into images, videos
                          └──────────────────┘
 ```
 
+<<<<<<< HEAD
 ---
 
 ## 🚀 Quick Start
@@ -168,6 +177,7 @@ Performance measured on AMD Radeon RX 7900 XTX (24 GB VRAM, ROCm 6.1):
 
 ## 🔄 System Flow
 
+
 ```text
 User Prompt
       │
@@ -270,7 +280,10 @@ Preview
 Export
 ```
 
+<<<<<<< HEAD
 ---
+=======
+>>>>>>> 7b70344 (feat: add AWS deployment configs, Dockerfiles, docker-compose, and automated deploy-aws.sh)
 
 ## 🛠️ Tech Stack
 

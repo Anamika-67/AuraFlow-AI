@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+node_modules
+frontend/node_modules
+frontend/dist
+backend/__pycache__
+backend/outputs/*
+backend/projects/*
+backend/models/*
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+dist

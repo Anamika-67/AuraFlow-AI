@@ -1,4 +1,16 @@
-const BASE_URL = "http://localhost:8000";
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL !== undefined) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  // In development, if running via Vite dev server without proxy override
+  if (typeof window !== "undefined" && window.location.hostname === "localhost" && window.location.port === "5173") {
+    return "http://localhost:8000";
+  }
+  // Default to relative path (works with Nginx proxy in production)
+  return "";
+};
+
+const BASE_URL = getApiBaseUrl();
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
@@ -73,11 +85,29 @@ export const getProject = (id) => apiFetch(`/api/projects/${id}`);
 
 // ─── WebSocket Telemetry ──────────────────────────────────────────────────────
 export const createTelemetrySocket = (onMessage) => {
-  const ws = new WebSocket(`ws://localhost:8000/ws/telemetry`);
+  let wsUrl;
+  if (import.meta.env.VITE_WS_BASE_URL) {
+    wsUrl = `${import.meta.env.VITE_WS_BASE_URL}/ws/telemetry`;
+  } else if (BASE_URL.startsWith("http")) {
+    const wsProto = BASE_URL.startsWith("https") ? "wss://" : "ws://";
+    const host = BASE_URL.replace(/^https?:\/\//, "");
+    wsUrl = `${wsProto}${host}/ws/telemetry`;
+  } else {
+    const wsProto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss://" : "ws://";
+    const host = typeof window !== "undefined" ? window.location.host : "localhost:8000";
+    wsUrl = `${wsProto}${host}/ws/telemetry`;
+  }
+
+  const ws = new WebSocket(wsUrl);
   ws.onmessage = (e) => onMessage(JSON.parse(e.data));
   ws.onerror = () => {};
   return ws;
 };
 
 // ─── Media URL Helper ─────────────────────────────────────────────────────────
-export const mediaUrl = (path) => `${BASE_URL}${path}`;
+export const mediaUrl = (path) => {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${BASE_URL}${path}`;
+};
+

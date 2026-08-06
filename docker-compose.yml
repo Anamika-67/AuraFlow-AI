@@ -1,103 +1,50 @@
 # ===========================================================================
 # AuraFlow-AI — Docker Compose Configuration
-# AMD Radeon GPU Deployment with ROCm Acceleration
-# ===========================================================================
-#
-# Usage:
-#   docker compose up -d              # Start all services
-#   docker compose logs -f backend    # View backend logs
-#   docker compose down               # Stop all services
-#
-# Prerequisites:
-#   - AMD Radeon GPU (RX 6000/7000 series or Instinct MI series)
-#   - ROCm 6.1+ driver installed on host
-#   - Docker with GPU support configured
-#
+# Multi-container deployment (FastAPI Backend + React Nginx Frontend)
 # ===========================================================================
 
 services:
-  # ── AuraFlow Backend (FastAPI + ROCm GPU) ──────────────────────────────
+  # ── AuraFlow Backend (FastAPI) ───────────────────────────────────────────
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     container_name: auraflow-backend
     restart: unless-stopped
-
     ports:
       - "8000:8000"
-
-    # AMD GPU passthrough — required for ROCm acceleration
-    devices:
-      - /dev/kfd:/dev/kfd       # Kernel Fusion Driver (AMD GPU compute)
-      - /dev/dri:/dev/dri       # Direct Rendering Infrastructure
-
-    # GPU access groups
-    group_add:
-      - video
-      - render
-
     environment:
-      # ROCm GPU Configuration
-      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
-      - PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH:-gfx1100}
-      - HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
-
-      # PyTorch Optimizations
-      - PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:512
-      - TORCH_COMPILE_BACKEND=inductor
-
-      # AuraFlow Settings
+      - HOST=0.0.0.0
+      - PORT=8000
+      - ALLOWED_ORIGINS=*
       - AURA_DEVICE=auto
-      - AURA_FP16=true
-      - AURA_TORCH_COMPILE=true
-      - AURA_ATTENTION_BACKEND=sdpa
-
-      # HuggingFace model cache
-      - HF_HOME=/app/models/hf_cache
-      - TRANSFORMERS_CACHE=/app/models/hf_cache
-
+      - HF_HOME=/app/backend/models/hf_cache
     volumes:
-      # Persistent model weights (avoid re-downloading)
       - auraflow-models:/app/backend/models
-      # Persistent generated outputs
       - auraflow-outputs:/app/backend/outputs
-      # Persistent project data
       - auraflow-projects:/app/backend/projects
-
-    # Shared memory for PyTorch DataLoader (ROCm needs large shm)
     shm_size: "8gb"
-
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
+      interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 20s
 
-  # ── AuraFlow Frontend (Vite Dev Server / Nginx Production) ─────────────
+  # ── AuraFlow Frontend (React Nginx Server) ───────────────────────────────
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.frontend
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: auraflow-frontend
     restart: unless-stopped
-
     ports:
-      - "5173:5173"
-
-    environment:
-      - VITE_API_URL=http://backend:8000
-
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
 
-# ── Named Volumes ──────────────────────────────────────────────────────────
 volumes:
-  auraflow-models:
-    driver: local
   auraflow-outputs:
-    driver: local
   auraflow-projects:
-    driver: local
+  auraflow-models:

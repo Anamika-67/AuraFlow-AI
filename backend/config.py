@@ -82,14 +82,19 @@ HSA_GFX_VERSION = os.environ.get("HSA_OVERRIDE_GFX_VERSION", "")
 # ---------------------------------------------------------------------------
 # Server Config
 # ---------------------------------------------------------------------------
-HOST = os.environ.get("AURA_HOST", "0.0.0.0")
-PORT = int(os.environ.get("AURA_PORT", "8000"))
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "*"
-]
+HOST = os.environ.get("AURA_HOST", os.getenv("HOST", "0.0.0.0"))
+PORT = int(os.environ.get("AURA_PORT", os.getenv("PORT", "8000")))
+
+env_origins = os.getenv("ALLOWED_ORIGINS")
+if env_origins:
+    ALLOWED_ORIGINS = [origin.strip() for origin in env_origins.split(",") if origin.strip()]
+else:
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "*"
+    ]
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -105,3 +110,4 @@ logging.basicConfig(
 logger = logging.getLogger("auraflow.config")
 logger.info("Device: %s | GPU: %s | ROCm: %s (v%s) | VRAM: %d MB | Arch: %s",
             DEVICE_TYPE, GPU_NAME, ROCM_AVAILABLE, ROCM_VERSION, VRAM_TOTAL_MB, ROCM_ARCH)
+
